@@ -22,6 +22,10 @@ import os
 import sys
 from typing import Any, Callable, TYPE_CHECKING
 
+# Attempt to import the custom claims function
+# Handle potential ImportError if superset_config is not in the path during certain operations
+# Custom claims function is now loaded via config in configure_fab
+
 import wtforms_json
 from deprecation import deprecated
 from flask import Flask, redirect
@@ -550,6 +554,7 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
     @transaction()
     def configure_fab(self) -> None:
         if self.config["SILENCE_FAB"]:
+            import logging
             logging.getLogger("flask_appbuilder").setLevel(logging.ERROR)
 
         custom_sm = self.config["CUSTOM_SECURITY_MANAGER"] or SupersetSecurityManager
@@ -564,6 +569,25 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
         appbuilder.base_template = "superset/base.html"
         appbuilder.security_manager_class = custom_sm
         appbuilder.init_app(self.superset_app, db.session)
+
+        # Register custom JWT claims callback if configured
+        try:
+            jwt_manager = appbuilder.sm.jwt_manager
+            custom_claims_callback = self.superset_app.config.get("ADDITIONAL_JWT_CLAIMS_CALLBACK")
+
+            if custom_claims_callback and callable(custom_claims_callback):
+                jwt_manager.additional_claims_loader(custom_claims_callback)
+                logger.info("Successfully registered custom JWT claims callback.")
+            elif "ADDITIONAL_JWT_CLAIMS_CALLBACK" in self.superset_app.config:
+                 logger.warning(
+                     "Found ADDITIONAL_JWT_CLAIMS_CALLBACK in config, but it was not a callable function. Skipping registration."
+                 )
+            else:
+                logger.info("No custom JWT claims callback found in configuration.")
+        except Exception as e:
+            logger.error(f"Error registering custom JWT claims callback: {e}", exc_info=True)
+
+
 
     def configure_url_map_converters(self) -> None:
         #
