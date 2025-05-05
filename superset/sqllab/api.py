@@ -18,7 +18,7 @@ import logging
 from typing import Any, cast, Optional
 from urllib import parse
 
-from flask import request, Response
+from flask import g, request, Response # Reverted: Removed get_jwt import
 from flask_appbuilder import permission_name
 from flask_appbuilder.api import expose, protect, rison, safe
 from flask_appbuilder.models.sqla.interface import SQLAInterface
@@ -35,6 +35,7 @@ from superset.daos.query import QueryDAO
 from superset.extensions import event_logger
 from superset.jinja_context import get_template_processor
 from superset.models.sql_lab import Query
+# Reverted: Removed map_tenant_to_schema import
 from superset.sql.parse import SQLScript
 from superset.sql_lab import get_sql_results
 from superset.sqllab.command_status import SqlJsonExecutionStatus
@@ -404,7 +405,10 @@ class SqlLabRestApi(BaseSupersetApi):
             log_params = {
                 "user_agent": cast(Optional[str], request.headers.get("USER_AGENT"))
             }
+            # Reverted: Removed tenant schema extraction logic
+
             execution_context = SqlJsonExecutionContext(request.json)
+            # Reverted: Removed tenant_schema_name from command creation
             command = self._create_sql_json_command(execution_context, log_params)
             command_result: CommandResult = command.run()
 
@@ -424,10 +428,12 @@ class SqlLabRestApi(BaseSupersetApi):
             return self.response(response_status, **payload)
 
     @staticmethod
-    def _create_sql_json_command(
-        execution_context: SqlJsonExecutionContext, log_params: Optional[dict[str, Any]]
+    def _create_sql_json_command( # Reverted: Removed tenant_schema_name parameter
+        execution_context: SqlJsonExecutionContext,
+        log_params: Optional[dict[str, Any]],
     ) -> ExecuteSqlCommand:
         query_dao = QueryDAO()
+        # Reverted: Removed tenant_schema_name from executor creation
         sql_json_executor = SqlLabRestApi._create_sql_json_executor(
             execution_context, query_dao
         )
@@ -448,13 +454,18 @@ class SqlLabRestApi(BaseSupersetApi):
         )
 
     @staticmethod
-    def _create_sql_json_executor(
-        execution_context: SqlJsonExecutionContext, query_dao: QueryDAO
+    def _create_sql_json_executor( # Reverted: Removed tenant_schema_name parameter
+        execution_context: SqlJsonExecutionContext,
+        query_dao: QueryDAO,
     ) -> SqlJsonExecutor:
         sql_json_executor: SqlJsonExecutor
         if execution_context.is_run_asynchronous():
+            # Reverted: Removed tenant_schema_name from async executor constructor
             sql_json_executor = ASynchronousSqlJsonExecutor(query_dao, get_sql_results)
         else:
+            # Note: Synchronous execution might not need tenant_schema_name explicitly
+            # if it runs within the request context where 'g' is available.
+            # However, the previous change in sql_lab.py already handles this.
             sql_json_executor = SynchronousSqlJsonExecutor(
                 query_dao,
                 get_sql_results,

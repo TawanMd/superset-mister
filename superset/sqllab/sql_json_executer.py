@@ -158,6 +158,8 @@ class SynchronousSqlJsonExecutor(SqlJsonExecutorBase):
 
 
 class ASynchronousSqlJsonExecutor(SqlJsonExecutorBase):
+    # Reverted: No longer needs tenant_schema_name in constructor
+
     def execute(
         self,
         execution_context: SqlJsonExecutionContext,
@@ -167,16 +169,23 @@ class ASynchronousSqlJsonExecutor(SqlJsonExecutorBase):
         query_id = execution_context.query.id
         logger.info("Query %i: Running query on a Celery worker", query_id)
         try:
-            task = self._get_sql_results_task.delay(  # type: ignore
+            # Reverted: No longer passing tenant_schema_name
+
+            # Use apply_async for more explicit argument passing
+            task_args = (
                 query_id,
                 rendered_query,
-                return_results=False,
-                store_results=not execution_context.select_as_cta,
-                username=get_username(),
-                start_time=now_as_float(),
-                expand_data=execution_context.expand_data,
-                log_params=log_params,
             )
+            task_kwargs = dict(
+                return_results=False,
+                store_results = not execution_context.select_as_cta,
+                username = get_username(),
+                start_time = now_as_float(),
+                expand_data = execution_context.expand_data,
+                log_params = log_params,
+                # Reverted: tenant_schema_name kwarg removed
+            )
+            task = self._get_sql_results_task.apply_async(args=task_args, kwargs=task_kwargs)
             try:
                 task.forget()
             except NotImplementedError:
