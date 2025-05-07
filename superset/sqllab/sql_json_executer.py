@@ -61,10 +61,17 @@ class SqlJsonExecutor:
 class SqlJsonExecutorBase(SqlJsonExecutor, ABC):
     _query_dao: QueryDAO
     _get_sql_results_task: GetSqlResultsTask
+    _tenant_schema_name: str | None  # Added
 
-    def __init__(self, query_dao: QueryDAO, get_sql_results_task: GetSqlResultsTask):
+    def __init__(
+        self,
+        query_dao: QueryDAO,
+        get_sql_results_task: GetSqlResultsTask,
+        tenant_schema_name: str | None = None,  # Added
+    ):
         self._query_dao = query_dao
         self._get_sql_results_task = get_sql_results_task
+        self._tenant_schema_name = tenant_schema_name  # Added
 
 
 class SynchronousSqlJsonExecutor(SqlJsonExecutorBase):
@@ -77,8 +84,11 @@ class SynchronousSqlJsonExecutor(SqlJsonExecutorBase):
         get_sql_results_task: GetSqlResultsTask,
         timeout_duration_in_seconds: int,
         sqllab_backend_persistence_feature_enable: bool,
+        tenant_schema_name: str | None = None,  # Added
     ):
-        super().__init__(query_dao, get_sql_results_task)
+        super().__init__(
+            query_dao, get_sql_results_task, tenant_schema_name=tenant_schema_name
+        )  # Modified
         self._timeout_duration_in_seconds = timeout_duration_in_seconds
         self._sqllab_backend_persistence_feature_enable = (
             sqllab_backend_persistence_feature_enable
@@ -142,6 +152,7 @@ class SynchronousSqlJsonExecutor(SqlJsonExecutorBase):
             username=get_username(),
             expand_data=execution_context.expand_data,
             log_params=log_params,
+            tenant_schema_name=self._tenant_schema_name,  # Added
         )
 
     def _is_store_results(self, execution_context: SqlJsonExecutionContext) -> bool:
@@ -158,7 +169,15 @@ class SynchronousSqlJsonExecutor(SqlJsonExecutorBase):
 
 
 class ASynchronousSqlJsonExecutor(SqlJsonExecutorBase):
-    # Reverted: No longer needs tenant_schema_name in constructor
+    def __init__(  # Added
+        self,
+        query_dao: QueryDAO,
+        get_sql_results_task: GetSqlResultsTask,
+        tenant_schema_name: str | None = None,
+    ):
+        super().__init__(
+            query_dao, get_sql_results_task, tenant_schema_name=tenant_schema_name
+        )
 
     def execute(
         self,
@@ -169,8 +188,6 @@ class ASynchronousSqlJsonExecutor(SqlJsonExecutorBase):
         query_id = execution_context.query.id
         logger.info("Query %i: Running query on a Celery worker", query_id)
         try:
-            # Reverted: No longer passing tenant_schema_name
-
             # Use apply_async for more explicit argument passing
             task_args = (
                 query_id,
@@ -178,14 +195,16 @@ class ASynchronousSqlJsonExecutor(SqlJsonExecutorBase):
             )
             task_kwargs = dict(
                 return_results=False,
-                store_results = not execution_context.select_as_cta,
-                username = get_username(),
-                start_time = now_as_float(),
-                expand_data = execution_context.expand_data,
-                log_params = log_params,
-                # Reverted: tenant_schema_name kwarg removed
+                store_results=not execution_context.select_as_cta,
+                username=get_username(),
+                start_time=now_as_float(),
+                expand_data=execution_context.expand_data,
+                log_params=log_params,
+                tenant_schema_name=self._tenant_schema_name,  # Added
             )
-            task = self._get_sql_results_task.apply_async(args=task_args, kwargs=task_kwargs)
+            task = self._get_sql_results_task.apply_async(
+                args=task_args, kwargs=task_kwargs
+            )
             try:
                 task.forget()
             except NotImplementedError:

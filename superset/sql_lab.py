@@ -175,22 +175,13 @@ def get_sql_results(  # pylint: disable=too-many-arguments
     start_time: Optional[float] = None,
     expand_data: bool = False,
     log_params: Optional[dict[str, Any]] = None,
+    tenant_schema_name: Optional[str] = None,  # Added tenant_schema_name parameter
 ) -> Optional[dict[str, Any]]:
     """Executes the sql query returns the results."""
-    # --- BEGIN MULTI-TENANCY MODIFICATION ---
-    # Determine schema name directly using static tenantUuid
-    tenant_schema_name: Optional[str] = None
-    static_tenant_uuid = 'ds_05418268000161' # Use the known static UUID
-    try:
-        schema_name = map_tenant_to_schema(static_tenant_uuid)
-        if schema_name:
-            tenant_schema_name = schema_name
-            logger.debug("Celery task determined tenant schema: %s", tenant_schema_name)
-        else:
-            logger.warning("Celery task failed to map static tenant UUID '%s' to schema.", static_tenant_uuid)
-    except Exception as e:
-        logger.error("Celery task error mapping static tenant UUID: %s", e, exc_info=True)
-    # --- END MULTI-TENANCY MODIFICATION ---
+    # The tenant_schema_name parameter received by this function
+    # (passed from the executor, originating from the JWT)
+    # will be used directly in the call to execute_sql_statements below.
+    # Removed incorrect static lookup block that was here.
 
     with current_app.test_request_context():
         with override_user(security_manager.find_user(username)):

@@ -589,19 +589,22 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
         # Register custom JWT claims callback if configured
         try:
             jwt_manager = appbuilder.sm.jwt_manager
-            custom_claims_callback = self.superset_app.config.get("ADDITIONAL_JWT_CLAIMS_CALLBACK")
+            configured_claims_callback = self.superset_app.config.get("ADDITIONAL_JWT_CLAIMS_CALLBACK")
 
-            if custom_claims_callback and callable(custom_claims_callback):
-                jwt_manager.additional_claims_loader(custom_claims_callback)
-                logger.info("Successfully registered custom JWT claims callback.")
-            elif "ADDITIONAL_JWT_CLAIMS_CALLBACK" in self.superset_app.config:
-                 logger.warning(
-                     "Found ADDITIONAL_JWT_CLAIMS_CALLBACK in config, but it was not a callable function. Skipping registration."
-                 )
+            if configured_claims_callback and callable(configured_claims_callback):
+                jwt_manager.additional_claims_loader(configured_claims_callback)
+                logger.info(
+                    "Successfully registered JWT claims callback from superset_config.py "
+                    "(ADDITIONAL_JWT_CLAIMS_CALLBACK)."
+                )
             else:
-                logger.info("No custom JWT claims callback found in configuration.")
+                logger.info(
+                    "No additional JWT claims callback found or configured via "
+                    "ADDITIONAL_JWT_CLAIMS_CALLBACK in superset_config.py."
+                )
+
         except Exception as e:
-            logger.error(f"Error registering custom JWT claims callback: {e}", exc_info=True)
+            logger.error(f"Error processing ADDITIONAL_JWT_CLAIMS_CALLBACK: {e}", exc_info=True)
 
 
 
