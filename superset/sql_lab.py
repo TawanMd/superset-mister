@@ -69,6 +69,7 @@ from superset.utils.core import (
 )
 from superset.utils.dates import now_as_float
 from superset.utils.decorators import stats_timing
+from superset.utils.multi_tenancy import map_tenant_to_schema # <-- Import map_tenant_to_schema
 
 config = app.config
 stats_logger = config["STATS_LOGGER"]
@@ -174,8 +175,14 @@ def get_sql_results(  # pylint: disable=too-many-arguments
     start_time: Optional[float] = None,
     expand_data: bool = False,
     log_params: Optional[dict[str, Any]] = None,
+    tenant_schema_name: Optional[str] = None,  # Added tenant_schema_name parameter
 ) -> Optional[dict[str, Any]]:
     """Executes the sql query returns the results."""
+    # The tenant_schema_name parameter received by this function
+    # (passed from the executor, originating from the JWT)
+    # will be used directly in the call to execute_sql_statements below.
+    # Removed incorrect static lookup block that was here.
+
     with current_app.test_request_context():
         with override_user(security_manager.find_user(username)):
             try:
@@ -187,6 +194,7 @@ def get_sql_results(  # pylint: disable=too-many-arguments
                     start_time=start_time,
                     expand_data=expand_data,
                     log_params=log_params,
+                    tenant_schema_name=tenant_schema_name, # Pass determined schema name
                 )
             except Exception as ex:  # pylint: disable=broad-except
                 logger.debug("Query %d: %s", query_id, ex)
@@ -412,6 +420,7 @@ def execute_sql_statements(
     start_time: Optional[float],
     expand_data: bool,
     log_params: Optional[dict[str, Any]],
+    tenant_schema_name: Optional[str] = None, # <-- Keep parameter here
 ) -> Optional[dict[str, Any]]:
     """Executes the sql query returns the results."""
     if store_results and start_time:
@@ -495,6 +504,34 @@ def execute_sql_statements(
         # Sharing a single connection and cursor across the
         # execution of all statements (if many)
         cursor = conn.cursor()
+
+        # --- BEGIN MULTI-TENANCY MODIFICATION ---
+        # Explicitly set search_path based on the passed tenant_schema_name
+        if tenant_schema_name:
+            try:
+                logger.info(
+                    "SQL Lab: Attempting to set search_path to '%s, public' for tenant.",
+                    tenant_schema_name
+                )
+                # Use parameterized query to prevent SQL injection
+                cursor.execute("SET search_path = %s, public;", (tenant_schema_name,))
+                logger.info(
+                    "SQL Lab: Successfully set search_path for schema '%s'.",
+                    tenant_schema_name
+                )
+            except Exception as e:
+                 logger.error(
+                    "SQL Lab: Failed to set search_path for schema '%s': %s",
+                    tenant_schema_name,
+                    e,
+                    exc_info=True
+                 )
+                 # Raise an error to prevent query execution with wrong/default search_path
+                 raise SqlLabException(f"Failed to set tenant schema context: {e}") from e
+        else:
+            logger.debug("SQL Lab: No tenant schema name provided, using default search_path.")
+        # --- END MULTI-TENANCY MODIFICATION ---
+
         cancel_query_id = db_engine_spec.get_cancel_query_id(cursor, query)
         if cancel_query_id is not None:
             query.set_extra_json_key(QUERY_CANCEL_KEY, cancel_query_id)

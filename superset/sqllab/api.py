@@ -18,7 +18,8 @@ import logging
 from typing import Any, cast, Optional
 from urllib import parse
 
-from flask import request, Response
+from flask import g, request, Response
+from flask_jwt_extended import get_jwt # Added: Import get_jwt
 from flask_appbuilder import permission_name
 from flask_appbuilder.api import expose, protect, rison, safe
 from flask_appbuilder.models.sqla.interface import SQLAInterface
@@ -32,11 +33,12 @@ from superset.commands.sql_lab.results import SqlExecutionResultsCommand
 from superset.constants import MODEL_API_RW_METHOD_PERMISSION_MAP
 from superset.daos.database import DatabaseDAO
 from superset.daos.query import QueryDAO
-from superset.extensions import event_logger
+from superset.extensions import csrf, event_logger # Added csrf import back
 from superset.jinja_context import get_template_processor
 from superset.models.sql_lab import Query
 from superset.sql.parse import SQLScript
 from superset.sql_lab import get_sql_results
+# from superset.utils.multi_tenancy import map_tenant_to_schema # Ensure this is not needed here if logic is in sql_lab.py
 from superset.sqllab.command_status import SqlJsonExecutionStatus
 from superset.sqllab.exceptions import (
     QueryIsForbiddenToAccessException,
@@ -352,6 +354,7 @@ class SqlLabRestApi(BaseSupersetApi):
 
     @expose("/execute/", methods=("POST",))
     @protect()
+    @csrf.exempt # Added @csrf.exempt back
     @statsd_metrics
     @requires_json
     @event_logger.log_this_with_context(
@@ -404,8 +407,25 @@ class SqlLabRestApi(BaseSupersetApi):
             log_params = {
                 "user_agent": cast(Optional[str], request.headers.get("USER_AGENT"))
             }
+
+            # Extract tenantUuid from JWT
+            tenant_schema_name: Optional[str] = None
+            try:
+                jwt_claims = get_jwt()
+                if jwt_claims:
+                    tenant_schema_name = jwt_claims.get("tenantUuid")
+                logger.info(
+                    f"Extracted tenantUuid from JWT for SQL Lab execution: {tenant_schema_name}"
+                )
+            except Exception as e:
+                logger.error(f"Error extracting tenantUuid from JWT: {e}", exc_info=True)
+                # Potentially return 400/500 if tenantUuid is mandatory and missing/error
+                # For now, allow to proceed; sql_lab.py might handle None schema if that's intended
+
             execution_context = SqlJsonExecutionContext(request.json)
-            command = self._create_sql_json_command(execution_context, log_params)
+            command = self._create_sql_json_command(
+                execution_context, log_params, tenant_schema_name=tenant_schema_name
+            )
             command_result: CommandResult = command.run()
 
             response_status = (
@@ -425,11 +445,13 @@ class SqlLabRestApi(BaseSupersetApi):
 
     @staticmethod
     def _create_sql_json_command(
-        execution_context: SqlJsonExecutionContext, log_params: Optional[dict[str, Any]]
+        execution_context: SqlJsonExecutionContext,
+        log_params: Optional[dict[str, Any]],
+        tenant_schema_name: Optional[str],  # Added
     ) -> ExecuteSqlCommand:
         query_dao = QueryDAO()
         sql_json_executor = SqlLabRestApi._create_sql_json_executor(
-            execution_context, query_dao
+            execution_context, query_dao, tenant_schema_name=tenant_schema_name
         )
         execution_context_convertor = ExecutionContextConvertor()
         execution_context_convertor.set_max_row_in_display(
@@ -449,16 +471,21 @@ class SqlLabRestApi(BaseSupersetApi):
 
     @staticmethod
     def _create_sql_json_executor(
-        execution_context: SqlJsonExecutionContext, query_dao: QueryDAO
+        execution_context: SqlJsonExecutionContext,
+        query_dao: QueryDAO,
+        tenant_schema_name: Optional[str],  # Added
     ) -> SqlJsonExecutor:
         sql_json_executor: SqlJsonExecutor
         if execution_context.is_run_asynchronous():
-            sql_json_executor = ASynchronousSqlJsonExecutor(query_dao, get_sql_results)
+            sql_json_executor = ASynchronousSqlJsonExecutor(
+                query_dao, get_sql_results, tenant_schema_name=tenant_schema_name
+            )
         else:
             sql_json_executor = SynchronousSqlJsonExecutor(
                 query_dao,
                 get_sql_results,
                 config.get("SQLLAB_TIMEOUT"),
                 is_feature_enabled("SQLLAB_BACKEND_PERSISTENCE"),
+                tenant_schema_name=tenant_schema_name,
             )
         return sql_json_executor

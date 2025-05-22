@@ -28,11 +28,14 @@ from typing import Any, Callable, TYPE_CHECKING
 
 import wtforms_json
 from deprecation import deprecated
-from flask import Flask, redirect
+from flask import Flask, g, redirect, request
 from flask_appbuilder import expose, IndexView
 from flask_babel import gettext as __
 from flask_compress import Compress
+from flask_jwt_extended import get_jwt
+from flask_jwt_extended.exceptions import NoAuthorizationError
 from flask_session import Session
+from sqlalchemy import event, exc
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from superset.constants import CHANGE_ME_SECRET_KEY
@@ -64,11 +67,20 @@ from superset.tags.core import register_sqla_event_listeners
 from superset.utils.core import is_test, pessimistic_connection_handling
 from superset.utils.decorators import transaction
 from superset.utils.log import DBEventLogger, get_event_logger_from_cfg_value
+from superset.utils.multi_tenancy import map_tenant_to_schema  # Multi-tenancy import
 
 if TYPE_CHECKING:
     from superset.app import SupersetApp
 
 logger = logging.getLogger(__name__)
+
+
+# --- Multi-Tenancy Schema Switching ---
+
+# NOTE: set_search_path_before_execute listener removed as logic moved to sql_lab.py
+# NOTE: set_tenant_context @before_request hook removed as logic moved to sqllab/api.py
+
+# --- End Multi-Tenancy Schema Switching ---
 
 
 class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
@@ -414,7 +426,11 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
         """
         Runs init logic in the context of the app
         """
-        self.configure_fab()
+        self.configure_fab() # Initializes db session with app
+
+        # NOTE: @before_request hook registration removed.
+        # NOTE: SQLAlchemy event listener registration removed.
+
         self.configure_url_map_converters()
         self.configure_data_sources()
         self.configure_auth_provider()
@@ -561,8 +577,8 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
         if not issubclass(custom_sm, SupersetSecurityManager):
             raise Exception(  # pylint: disable=broad-exception-raised
                 """Your CUSTOM_SECURITY_MANAGER must now extend SupersetSecurityManager,
-                 not FAB's security manager.
-                 See [4565] in UPDATING.md"""
+                not FAB's security manager.
+                See [4565] in UPDATING.md"""
             )
 
         appbuilder.indexview = SupersetIndexView
@@ -573,19 +589,22 @@ class SupersetAppInitializer:  # pylint: disable=too-many-public-methods
         # Register custom JWT claims callback if configured
         try:
             jwt_manager = appbuilder.sm.jwt_manager
-            custom_claims_callback = self.superset_app.config.get("ADDITIONAL_JWT_CLAIMS_CALLBACK")
+            configured_claims_callback = self.superset_app.config.get("ADDITIONAL_JWT_CLAIMS_CALLBACK")
 
-            if custom_claims_callback and callable(custom_claims_callback):
-                jwt_manager.additional_claims_loader(custom_claims_callback)
-                logger.info("Successfully registered custom JWT claims callback.")
-            elif "ADDITIONAL_JWT_CLAIMS_CALLBACK" in self.superset_app.config:
-                 logger.warning(
-                     "Found ADDITIONAL_JWT_CLAIMS_CALLBACK in config, but it was not a callable function. Skipping registration."
-                 )
+            if configured_claims_callback and callable(configured_claims_callback):
+                jwt_manager.additional_claims_loader(configured_claims_callback)
+                logger.info(
+                    "Successfully registered JWT claims callback from superset_config.py "
+                    "(ADDITIONAL_JWT_CLAIMS_CALLBACK)."
+                )
             else:
-                logger.info("No custom JWT claims callback found in configuration.")
+                logger.info(
+                    "No additional JWT claims callback found or configured via "
+                    "ADDITIONAL_JWT_CLAIMS_CALLBACK in superset_config.py."
+                )
+
         except Exception as e:
-            logger.error(f"Error registering custom JWT claims callback: {e}", exc_info=True)
+            logger.error(f"Error processing ADDITIONAL_JWT_CLAIMS_CALLBACK: {e}", exc_info=True)
 
 
 
