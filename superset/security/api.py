@@ -28,7 +28,7 @@ from superset.commands.dashboard.embedded.exceptions import (
     EmbeddedDashboardNotFoundError,
 )
 from superset.exceptions import SupersetGenericErrorException
-from superset.extensions import event_logger
+from superset.extensions import csrf, event_logger
 from superset.security.guest_token import GuestTokenResourceType
 from superset.views.base_api import BaseSupersetApi, statsd_metrics
 
@@ -113,6 +113,7 @@ class SecurityRestApi(BaseSupersetApi):
         return self.response(200, result=generate_csrf())
 
     @expose("/guest_token/", methods=("POST",))
+    @csrf.exempt  # Exempt this route from CSRF protection
     @event_logger.log_this
     @protect()
     @safe

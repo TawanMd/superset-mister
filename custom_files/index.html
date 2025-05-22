@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Teste Embed Superset</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 20px;
+      background-color: #f4f4f9;
+    }
+    #dashboardWrapper {
+      width: 100%;
+      height: 700px; /* Default height */
+      min-height: 600px;
+      border: 1px solid #ccc;
+      background-color: #fff;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      margin-top: 20px;
+    }
+    button {
+      padding: 10px 15px;
+      font-size: 16px;
+      cursor: pointer;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      transition: background-color 0.3s ease;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    .config-info {
+      background-color: #e9ecef;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+    .config-info code {
+      background-color: #fff;
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Teste de Embed do Dashboard Superset</h1>
+
+  <div class="config-info">
+    <p>Este exemplo tentará conectar-se usando as seguintes configurações (podem ser sobrescritas por <code>window.CONFIG</code>):</p>
+    <ul>
+      <li><strong>URL Base Superset:</strong> <code id="configSupersetUrl">http://localhost:8088</code></li>
+      <li><strong>Usuário:</strong> <code id="configUsername">superset</code></li>
+      <li><strong>Dashboard ID/Slug:</strong> <code id="configDashboardId">1</code></li>
+    </ul>
+    <p>Este exemplo usará as configurações padrão definidas em <code>superset-embed.js</code>.</p>
+    <!-- Seção window.CONFIG removida para usar os padrões fixos -->
+  </div>
+
+  <button id="testEmbedButton">Testar Embed</button>
+  <button id="refreshDashboardButton" style="margin-left: 10px;">Atualizar Dashboard</button>
+
+  <div id="dashboardWrapper">
+    <!-- O dashboard do Superset será embutido aqui -->
+  </div>
+
+  <script>
+    // Script para popular informações de config na UI (opcional, apenas para display)
+    // Mostra os valores que serão usados de DEFAULTS em superset-embed.js
+    document.getElementById('configSupersetUrl').textContent = 'http://localhost:8088'; // Valor padrão
+    document.getElementById('configUsername').textContent = 'superset'; // Valor padrão
+    document.getElementById('configDashboardId').textContent = '12'; // Valor padrão atualizado
+  </script>
+
+  <script type="module">
+    import { initSupersetEmbed, refreshDashboard } from './superset-embed.js';
+    
+    document.getElementById('testEmbedButton').addEventListener('click', () => {
+      console.log('Botão "Testar Embed" clicado.');
+      initSupersetEmbed();
+    });
+
+    document.getElementById('refreshDashboardButton').addEventListener('click', () => {
+      console.log('Botão "Atualizar Dashboard" clicado.');
+      refreshDashboard();
+    });
+  </script>
+
+</body>
+</html>

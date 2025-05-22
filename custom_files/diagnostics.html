@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Diagnóstico de Embed Superset</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background-color: #f7fafc; color: #2d3748; line-height: 1.6; }
+    .container { max-width: 900px; margin: 2rem auto; padding: 2rem; background-color: white; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-radius: 8px; }
+    h1 { font-size: 1.875rem; font-weight: 600; margin-bottom: 1.5rem; color: #2c5282; }
+    button { background-color: #4299e1; color: white; font-weight: bold; padding: 0.75rem 1.5rem; border: none; border-radius: 0.375rem; cursor: pointer; transition: background-color 0.2s; }
+    button:hover { background-color: #2b6cb0; }
+    button:disabled { background-color: #a0aec0; cursor: not-allowed; }
+    table { width: 100%; border-collapse: collapse; margin-top: 2rem; }
+    th, td { border: 1px solid #e2e8f0; padding: 0.75rem; text-align: left; }
+    th { background-color: #edf2f7; font-weight: 600; }
+    td code { background-color: #e2e8f0; padding: 0.2em 0.4em; margin: 0; font-size: 85%; border-radius: 3px; }
+    pre { background-color: #2d3748; color: #f7fafc; padding: 1rem; border-radius: 0.375rem; overflow-x: auto; font-size: 0.875em; }
+    .status-icon { font-size: 1.25rem; margin-right: 0.5rem; }
+    .status-ok { color: #38a169; } /* green */
+    .status-warn { color: #dd6b20; } /* orange */
+    .status-error { color: #e53e3e; } /* red */
+    .details { font-size: 0.875em; color: #4a5568; max-height: 100px; overflow-y: auto; display: inline-block; }
+    .suggestion { font-size: 0.875em; color: #4a5568; }
+    .config-note { font-size: 0.9em; background-color: #e6fffa; border-left: 4px solid #38b2ac; padding: 1em; margin-bottom: 1.5em; color: #234e52; }
+    #loadingIndicator { margin-top: 1rem; font-style: italic; color: #718096; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Diagnóstico de Embed do Apache Superset</h1>
+
+    <div class="config-note">
+      <p>Este diagnóstico usará configurações padrão. Para personalizar, defina <code>window.CONFIG</code> no console do navegador <strong>antes</strong> de rodar o diagnóstico. Exemplo:</p>
+      <pre><code>window.CONFIG = {
+  SUPSET_BASE_URL: 'http://localhost:8088',
+  USERNAME: 'superset',
+  PASSWORD: 'superset',
+  DASHBOARD_ID: 12, // ou slug do dashboard
+  GUEST_USER: { username: 'embed-bot-diag' },
+  DIAG_TIMEOUT_MS: 15000
+};</code></pre>
+    </div>
+
+    <button id="runDiagnosticsButton">Rodar Diagnóstico</button>
+    <div id="loadingIndicator" style="display: none;">Rodando diagnósticos...</div>
+
+    <div id="reportArea" style="margin-top: 2rem;">
+      <!-- O relatório será renderizado aqui -->
+    </div>
+
+    <div id="jsonResultsArea" style="margin-top: 2rem; display: none;">
+      <h2>Resultados em JSON (window.supersetDiag)</h2>
+      <pre><code id="jsonOutput"></code></pre>
+    </div>
+  </div>
+
+  <script type="module">
+    import { runDiagnostics } from './superset-diagnostics.js';
+
+    const runButton = document.getElementById('runDiagnosticsButton');
+    const reportArea = document.getElementById('reportArea');
+    const loadingIndicator = document.getElementById('loadingIndicator');
+    const jsonResultsArea = document.getElementById('jsonResultsArea');
+    const jsonOutput = document.getElementById('jsonOutput');
+
+    runButton.addEventListener('click', async () => {
+      runButton.disabled = true;
+      loadingIndicator.style.display = 'block';
+      reportArea.innerHTML = ''; // Clear previous report
+      jsonResultsArea.style.display = 'none';
+
+      try {
+        const results = await runDiagnostics();
+        window.supersetDiag = results; // Store results globally
+
+        renderReport(results);
+
+        jsonOutput.textContent = JSON.stringify(results, null, 2);
+        jsonResultsArea.style.display = 'block';
+
+      } catch (error) {
+        console.error("Erro geral ao rodar diagnósticos:", error);
+        reportArea.innerHTML = `<p class="status-error">Erro crítico ao rodar diagnósticos: ${error.message}</p>`;
+      } finally {
+        runButton.disabled = false;
+        loadingIndicator.style.display = 'none';
+      }
+    });
+
+    function renderReport(results) {
+      const table = document.createElement('table');
+      const header = table.createTHead().insertRow();
+      header.innerHTML = '<th>#</th><th>Checagem</th><th>Status</th><th>Detalhes</th><th>Como Corrigir</th>';
+      
+      const tbody = table.createTBody();
+      results.forEach((result, index) => {
+        const row = tbody.insertRow();
+        let statusClass = '';
+        if (result.status === '✅') statusClass = 'status-ok';
+        else if (result.status === '⚠️') statusClass = 'status-warn';
+        else if (result.status === '❌') statusClass = 'status-error';
+
+        row.insertCell().textContent = index + 1;
+        row.insertCell().textContent = result.checkName;
+        row.insertCell().innerHTML = `<span class="status-icon ${statusClass}">${result.status}</span>`;
+        
+        const detailsCell = row.insertCell();
+        const detailsDiv = document.createElement('div');
+        detailsDiv.className = 'details';
+        detailsDiv.textContent = result.details;
+        detailsCell.appendChild(detailsDiv);
+
+        const suggestionCell = row.insertCell();
+        const suggestionDiv = document.createElement('div');
+        suggestionDiv.className = 'suggestion';
+        // Format suggestion if it contains code block
+        if (result.suggestion && result.suggestion.includes('```python')) {
+            const parts = result.suggestion.split('```python');
+            suggestionDiv.appendChild(document.createTextNode(parts[0]));
+            const pre = document.createElement('pre');
+            const code = document.createElement('code');
+            code.textContent = parts[1].replace('```','').trim();
+            pre.appendChild(code);
+            suggestionDiv.appendChild(pre);
+            if (parts[2]) { // Text after code block
+                 suggestionDiv.appendChild(document.createTextNode(parts[2].trim()));
+            }
+        } else if (result.suggestion && result.suggestion.includes('```')) { // Generic code block
+            const parts = result.suggestion.split('```');
+            suggestionDiv.appendChild(document.createTextNode(parts[0]));
+            const pre = document.createElement('pre');
+            const code = document.createElement('code');
+            code.textContent = parts[1].trim();
+            pre.appendChild(code);
+            suggestionDiv.appendChild(pre);
+             if (parts[2]) {
+                 suggestionDiv.appendChild(document.createTextNode(parts[2].trim()));
+            }
+        }
+        else {
+            suggestionDiv.textContent = result.suggestion || 'N/A';
+        }
+        suggestionCell.appendChild(suggestionDiv);
+      });
+      reportArea.appendChild(table);
+    }
+  </script>
+</body>
+</html>
