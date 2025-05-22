@@ -13,11 +13,11 @@ source venv/bin/activate || { echo "Failed to activate venv"; exit 1; }
 
 # Set the configuration path
 echo "Exporting SUPERSET_CONFIG_PATH..."
-export SUPERSET_CONFIG_PATH=~/superset_config.py
+export SUPERSET_CONFIG_PATH="$PROJECT_DIR/custom_files/superset_config.py"
 
 # Run the backend server
-echo "Starting Superset server on port 8088..."
-superset run -p 5000 --with-threads --reload --debugger
+echo "Starting Superset server on port 5000..."
+superset run -p 5000 -h 0.0.0.0 --with-threads --reload --debugger
 
 echo "--- Superset Backend stopped ---"
 # Deactivate venv when server stops (optional)
