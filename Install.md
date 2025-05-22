@@ -16,7 +16,7 @@ Antes de começar, certifique-se de que você tem:
 3.  Recursos suficientes alocados para o WSL2 (Recomendado: 16GB+ de RAM mas pode ser com menos, testado com 8gb de ram também). Crie ou edite o arquivo `%UserProfile%\.wslconfig` no Windows e adicione:
     ```ini
     [wsl2]
-    memory=16GB
+    memory=8gb
     ```
     Depois, reinicie o WSL com `wsl --shutdown` no PowerShell.
 
