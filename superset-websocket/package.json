@@ -20,7 +20,7 @@
     "@types/lodash": "^4.17.4",
     "cookie": "^0.6.0",
     "hot-shots": "^10.0.0",
-    "ioredis": "^4.28.0",
+    "ioredis": "^5.6.1",
     "jsonwebtoken": "^9.0.2",
     "lodash": "^4.17.21",
     "uuid": "^9.0.1",
